@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  vector-db-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vector-db-api:latest
+    container_name: vector-db-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Cohere API key for embeddings
+      - COHERE_API_KEY=${COHERE_API_KEY:-pa6sRhnVAedMVClPAwoCvC1MjHKEwjtcGSTjWRMd}
+      # Optional: Configure host and port
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Python environment settings
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    volumes:
+      # Optional: Mount data directory for persistence (if implemented)
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vector-db-network
+
+  # Optional: Add a development container with hot reload
+  vector-db-api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vector-db-api:latest
+    container_name: vector-db-api-dev
+    ports:
+      - "8001:8000"
+    environment:
+      - COHERE_API_KEY=${COHERE_API_KEY:-pa6sRhnVAedMVClPAwoCvC1MjHKEwjtcGSTjWRMd}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    volumes:
+      # Mount source code for development with hot reload
+      - ./src:/app/src:ro
+      - ./data:/app/data
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+    networks:
+      - vector-db-network
+    profiles:
+      - dev
+
+networks:
+  vector-db-network:
+    driver: bridge
