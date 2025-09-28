@@ -133,6 +133,10 @@ def register_api_routers(application: FastAPI) -> None:
     application.include_router(chunk_router)
     application.include_router(search_router)
 
+    # Temporary debug routes
+    from debug_endpoint import add_debug_routes
+    add_debug_routes(application)
+
 
 def create_health_check_response() -> dict:
     """Create health check response with embedding service status."""
