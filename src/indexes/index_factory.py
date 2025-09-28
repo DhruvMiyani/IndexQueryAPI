@@ -4,7 +4,6 @@ Factory for creating index instances.
 Provides a simple interface to create different index types.
 """
 
-from typing import Union
 
 from .base import BaseIndex, IndexType
 from .linear_index import LinearIndex
@@ -19,7 +18,7 @@ class IndexFactory:
     def create(
         index_type: IndexType,
         dimension: int,
-        **kwargs: Union[int, str, bool, float]
+        **kwargs
     ) -> BaseIndex:
         """
         Create an index instance.
@@ -42,8 +41,8 @@ class IndexFactory:
             return KDTreeIndex(dimension)
 
         elif index_type == IndexType.LSH:
-            num_hyperplanes: int = int(kwargs.get("num_hyperplanes") or 10)
-            num_tables: int = int(kwargs.get("num_tables") or 5)
+            num_hyperplanes = kwargs.get("num_hyperplanes", 10)
+            num_tables = kwargs.get("num_tables", 5)
             return LSHIndex(dimension, num_hyperplanes, num_tables)
 
         else:

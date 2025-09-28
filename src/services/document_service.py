@@ -78,7 +78,7 @@ class DocumentService:
         # Create chunks if provided
         if chunk_texts:
             chunks = await self.create_chunks_for_document(
-                document.id, chunk_texts
+                document.id, chunk_texts, library_id
             )
             document.chunk_ids = [chunk.id for chunk in chunks]
             document.chunk_count = len(chunks)
@@ -97,7 +97,7 @@ class DocumentService:
         return document
 
     async def create_chunks_for_document(
-        self, document_id: UUID, chunk_texts: List[str]
+        self, document_id: UUID, chunk_texts: List[str], library_id: Optional[UUID] = None
     ) -> List[Chunk]:
         """
         Create chunks for a document.
@@ -105,6 +105,7 @@ class DocumentService:
         Args:
             document_id: Document ID
             chunk_texts: List of chunk texts
+            library_id: Library ID for indexing association
 
         Returns:
             List of created chunks
@@ -126,6 +127,11 @@ class DocumentService:
                 metadata=ChunkMetadata(position=position),
             )
             chunk = await self.chunk_repo.create(chunk)
+
+            # Associate chunk with library for indexing
+            if library_id:
+                await self.chunk_repo.add_to_library_index(library_id, chunk.id)
+
             chunks.append(chunk)
 
         return chunks
