@@ -26,17 +26,10 @@ class DocumentMetadata(BaseModel):
     language: Optional[str] = Field(None, description="Primary language code")
 
 
-class DocumentBase(BaseModel):
-    """Base document model with common fields."""
+class DocumentCreate(BaseModel):
+    """Model for creating a new document - uses composition."""
 
-    library_id: UUID = Field(description="ID of the parent library")
-    metadata: DocumentMetadata
-
-
-class DocumentCreate(DocumentBase):
-    """Model for creating a new document."""
-
-    pass
+    metadata: DocumentMetadata  # Composition: has-a DocumentMetadata
 
 
 class DocumentUpdate(BaseModel):
@@ -45,10 +38,12 @@ class DocumentUpdate(BaseModel):
     metadata: Optional[DocumentMetadata] = None
 
 
-class Document(DocumentBase):
-    """Complete document model with all fields."""
+class Document(BaseModel):
+    """Complete document model with all fields - uses composition."""
 
     id: UUID = Field(description="Unique identifier for the document")
+    library_id: UUID = Field(description="ID of the parent library")
+    metadata: DocumentMetadata  # Composition: has-a DocumentMetadata
     chunk_ids: List[UUID] = Field(
         default_factory=list,
         description="List of chunk IDs that belong to this document"

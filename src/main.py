@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.library_router import router as library_router
 from api.document_router import router as document_router
 from api.chunk_router import router as chunk_router
+from api.index_router import router as index_router
 from api.search_router import router as search_router
 from core.constants import (
     API_TITLE,
@@ -131,6 +132,7 @@ def register_api_routers(application: FastAPI) -> None:
     application.include_router(library_router)
     application.include_router(document_router)
     application.include_router(chunk_router)
+    application.include_router(index_router)  # Index before search for better API organization
     application.include_router(search_router)
 
     # Temporary debug routes
