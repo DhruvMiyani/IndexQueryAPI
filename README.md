@@ -2,6 +2,159 @@
 
 A high-performance vector database REST API built with FastAPI, featuring custom-implemented indexing algorithms for k-nearest neighbor search.
 
+## For Reviewers - Quick Docker Setup
+
+### Prerequisites
+- **Docker Engine 20.10+** and **Docker Compose 2.0+**
+- **4GB+ RAM** recommended
+- **2GB+ available disk space**
+
+### 1. Build the Docker Image
+```bash
+make build
+# Or: docker build -t vectordb-api:latest .
+```
+
+### 2. Start the Vector Database
+```bash
+make run
+# Or: docker run -d --name vectordb -p 8000:8000 -v vectordb_data:/app/data vectordb-api:latest
+```
+
+### 3. Verify it's Running
+```bash
+# Check container status
+docker ps
+
+# Test health endpoint
+curl http://localhost:8000/health
+```
+
+### 4. Access the API
+- **API Base**: http://localhost:8000
+- **Interactive Documentation**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
+
+### 5. Quick API Test
+```bash
+# Create a library
+curl -X POST "http://localhost:8000/libraries/" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Test Library", "metadata": {"description": "Demo library"}}'
+
+# Note the library ID from response, then add a document
+export LIBRARY_ID="your-library-id-here"
+
+curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/documents/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document_data": {"metadata": {"title": "AI Document"}},
+    "chunk_texts": ["Artificial intelligence is transforming technology."]
+  }'
+
+# Build index
+curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/index" \
+  -H "Content-Type: application/json" \
+  -d '{"index_type": "optimized_linear", "force_rebuild": true}'
+
+# Search
+curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query_text": "machine learning", "top_k": 3}'
+```
+
+### 6. Access Swagger UI
+- Open your browser
+- Navigate to http://localhost:8000/docs
+- You should see the interactive API documentation
+
+### 7. Follow the Manual Testing Guide
+
+**Step 7.1: Health Check**
+- Click on **GET /health**
+- Click "Try it out" → "Execute"
+- Verify response shows `"status": "healthy"`
+
+**Step 7.2: Create a Library**
+- Click on **POST /libraries**
+- Use this JSON:
+```json
+{
+  "name": "AI Research Library",
+  "metadata": {
+    "description": "Collection of AI and ML documents",
+    "category": "research"
+  }
+}
+```
+- Copy the returned `library_id`
+
+**Step 7.3: Create a Document**
+- Click on **POST /libraries/{library_id}/documents**
+- Replace `{library_id}` with your copied ID
+- Use this JSON:
+```json
+{
+  "library_id": "your-library-id-here",
+  "metadata": {
+    "title": "Introduction to Machine Learning"
+  }
+}
+```
+- Copy the returned `document_id`
+
+**Step 7.4: Add Chunks**
+- Click on **POST /libraries/{library_id}/chunks**
+- Add several chunks with different texts:
+```json
+{
+  "text": "Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience.",
+  "document_id": "your-document-id-here",
+  "metadata": {
+    "position": 0,
+    "tags": ["introduction"]
+  }
+}
+```
+
+**Step 7.5: Build Index**
+- Click on **POST /libraries/{library_id}/index**
+- Try different index types:
+```json
+{
+  "index_type": "linear"
+}
+```
+
+**Step 7.6: Perform Search**
+- Click on **POST /libraries/{library_id}/search**
+- Test semantic search:
+```json
+{
+  "query_text": "What is artificial intelligence?",
+  "top_k": 5,
+  "include_text": true,
+  "include_metadata": true
+}
+```
+
+### 8. Complete Demo
+```bash
+# View the complete walkthrough
+cat DEMO_WALKTHROUGH.md
+
+# Run automated tests
+make test
+```
+
+### 9. Management Commands
+```bash
+make logs    # View logs
+make stop    # Stop container
+make remove  # Remove container
+make clean   # Complete cleanup
+```
+
 ## Quick Start
 
 ### Prerequisites

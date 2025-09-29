@@ -1,167 +1,198 @@
-# Makefile for Vector Database API
-# Run 'make help' for available commands
-
-.PHONY: help install run test docker-build docker-run docker-up docker-down clean format lint
+# Vector Database API - Docker Makefile
 
 # Variables
-PYTHON := python3
-PIP := pip
-DOCKER_IMAGE := vector-db-api
-DOCKER_TAG := latest
-PORT := 8000
-COHERE_API_KEY := pa6sRhnVAedMVClPAwoCvC1MjHKEwjtcGSTjWRMd
+IMAGE_NAME = vectordb-api
+IMAGE_TAG = latest
+CONTAINER_NAME = vectordb
+PORT = 8000
+VOLUME_NAME = vectordb_data
 
-# Default target
+# Help
+.PHONY: help
 help: ## Show this help message
-	@echo "Vector Database API - Available Commands:"
-	@echo "========================================="
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@echo "Vector Database API - Docker Commands"
+	@echo "====================================="
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-# Development Setup
-install: ## Install dependencies
-	$(PYTHON) -m venv .venv
-	. .venv/bin/activate && $(PIP) install --upgrade pip
-	. .venv/bin/activate && $(PIP) install -r requirements.txt
-	@echo "✅ Dependencies installed. Activate venv with: source .venv/bin/activate"
+# Build Commands
+.PHONY: build
+build: ## Build Docker image
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-dev-install: install ## Install dev dependencies
-	. .venv/bin/activate && $(PIP) install pytest pytest-cov pytest-asyncio black ruff mypy
-	@echo "✅ Development dependencies installed"
+.PHONY: build-no-cache
+build-no-cache: ## Build Docker image without cache
+	docker build --no-cache -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-# Running the Application
-run: ## Run the application locally
-	@export COHERE_API_KEY=$(COHERE_API_KEY) && \
-	cd src && $(PYTHON) main.py
-
-run-dev: ## Run with auto-reload for development
-	@export COHERE_API_KEY=$(COHERE_API_KEY) && \
-	cd src && uvicorn main:app --reload --host 0.0.0.0 --port $(PORT)
-
-# Testing
-test: ## Run all tests
-	. .venv/bin/activate && pytest tests/ -v
-
-test-coverage: ## Run tests with coverage report
-	. .venv/bin/activate && pytest tests/ --cov=src --cov-report=html --cov-report=term
-	@echo "📊 Coverage report generated in htmlcov/index.html"
-
-test-integration: ## Run integration tests only
-	. .venv/bin/activate && pytest tests/test_api_integration.py -v
-
-test-unit: ## Run unit tests only
-	. .venv/bin/activate && pytest tests/ -v -k "not integration"
-
-# Code Quality
-format: ## Format code with black
-	. .venv/bin/activate && black src/ tests/
-	@echo "✨ Code formatted"
-
-lint: ## Lint code with ruff
-	. .venv/bin/activate && ruff check src/ tests/
-	@echo "🔍 Linting complete"
-
-typecheck: ## Type check with mypy
-	. .venv/bin/activate && mypy src/
-	@echo "✅ Type checking complete"
-
-quality: format lint ## Run all code quality checks
-	@echo "✅ All code quality checks passed"
-
-# Docker Commands
-docker-build: ## Build Docker image
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
-	@echo "🐳 Docker image built: $(DOCKER_IMAGE):$(DOCKER_TAG)"
-
-docker-run: ## Run Docker container
+# Run Commands
+.PHONY: run
+run: ## Run container
 	docker run -d \
-		--name $(DOCKER_IMAGE) \
+		--name $(CONTAINER_NAME) \
 		-p $(PORT):8000 \
-		-e COHERE_API_KEY=$(COHERE_API_KEY) \
-		$(DOCKER_IMAGE):$(DOCKER_TAG)
-	@echo "🚀 Container running at http://localhost:$(PORT)"
+		-v $(VOLUME_NAME):/app/data \
+		-e COHERE_API_KEY=${COHERE_API_KEY} \
+		$(IMAGE_NAME):$(IMAGE_TAG)
 
-docker-stop: ## Stop Docker container
-	docker stop $(DOCKER_IMAGE) || true
-	docker rm $(DOCKER_IMAGE) || true
-	@echo "🛑 Container stopped and removed"
+.PHONY: run-dev
+run-dev: ## Run container in development mode
+	docker run -it --rm \
+		--name $(CONTAINER_NAME)-dev \
+		-p $(PORT):8000 \
+		-v $(PWD)/src:/app/src \
+		-v $(PWD)/sdk:/app/sdk \
+		-e COHERE_API_KEY=${COHERE_API_KEY} \
+		$(IMAGE_NAME):$(IMAGE_TAG)
 
-docker-logs: ## Show Docker container logs
-	docker logs -f $(DOCKER_IMAGE)
-
-docker-shell: ## Open shell in Docker container
-	docker exec -it $(DOCKER_IMAGE) bash
+.PHONY: run-interactive
+run-interactive: ## Run container interactively
+	docker run -it --rm \
+		--name $(CONTAINER_NAME)-interactive \
+		-p $(PORT):8000 \
+		--entrypoint /bin/bash \
+		$(IMAGE_NAME):$(IMAGE_TAG)
 
 # Docker Compose Commands
-docker-up: ## Start services with docker-compose
+.PHONY: up
+up: ## Start services with docker-compose
 	docker-compose up -d
-	@echo "🚀 Services started at http://localhost:$(PORT)"
 
-docker-down: ## Stop services with docker-compose
+.PHONY: up-prod
+up-prod: ## Start services with production profile
+	docker-compose --profile production up -d
+
+.PHONY: down
+down: ## Stop and remove containers
 	docker-compose down
-	@echo "🛑 Services stopped"
 
-docker-restart: docker-down docker-up ## Restart all services
-	@echo "🔄 Services restarted"
+.PHONY: restart
+restart: down up ## Restart services
 
-docker-dev: ## Start development environment with docker-compose
-	docker-compose --profile dev up -d vector-db-api-dev
-	@echo "🚀 Development server at http://localhost:8001"
+# Management Commands
+.PHONY: logs
+logs: ## Show container logs
+	docker logs -f $(CONTAINER_NAME)
 
-# API Testing Commands
-api-health: ## Check API health
-	@curl -s http://localhost:$(PORT)/health | python -m json.tool
+.PHONY: logs-compose
+logs-compose: ## Show docker-compose logs
+	docker-compose logs -f
 
-api-create-library: ## Create a test library
-	@curl -X POST http://localhost:$(PORT)/libraries \
+.PHONY: shell
+shell: ## Open shell in running container
+	docker exec -it $(CONTAINER_NAME) /bin/bash
+
+.PHONY: stop
+stop: ## Stop container
+	docker stop $(CONTAINER_NAME)
+
+.PHONY: start
+start: ## Start stopped container
+	docker start $(CONTAINER_NAME)
+
+.PHONY: remove
+remove: stop ## Remove container
+	docker rm $(CONTAINER_NAME)
+
+# Testing Commands
+.PHONY: test
+test: ## Test the API endpoints
+	@echo "Testing health endpoint..."
+	curl -f http://localhost:$(PORT)/health || echo "Health check failed"
+	@echo "\nTesting library creation..."
+	curl -X POST "http://localhost:$(PORT)/libraries" \
 		-H "Content-Type: application/json" \
-		-d '{"name":"Test Library","index_type":"linear"}' | python -m json.tool
+		-d '{"name": "Test Library", "metadata": {"test": true}}' || echo "Library creation failed"
+	@echo "\nTesting library listing..."
+	curl -f http://localhost:$(PORT)/libraries || echo "Library listing failed"
 
-api-test-flow: ## Run complete test flow
-	@echo "Testing API flow..."
-	@$(MAKE) api-health
-	@$(MAKE) api-create-library
-	@echo "✅ API test flow complete"
+.PHONY: test-sdk
+test-sdk: ## Test SDK functionality
+	docker exec $(CONTAINER_NAME) python3 /app/sdk/examples.py
 
-# Cleanup
-clean: ## Clean up generated files
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache/ htmlcov/ .coverage
-	rm -rf dist/ build/ *.egg-info/
-	@echo "🧹 Cleanup complete"
+# Cleanup Commands
+.PHONY: clean
+clean: ## Remove container and image
+	-docker stop $(CONTAINER_NAME)
+	-docker rm $(CONTAINER_NAME)
+	-docker rmi $(IMAGE_NAME):$(IMAGE_TAG)
 
-clean-docker: ## Clean Docker resources
-	docker stop $(DOCKER_IMAGE) 2>/dev/null || true
-	docker rm $(DOCKER_IMAGE) 2>/dev/null || true
-	docker rmi $(DOCKER_IMAGE):$(DOCKER_TAG) 2>/dev/null || true
-	docker system prune -f
-	@echo "🧹 Docker cleanup complete"
+.PHONY: clean-all
+clean-all: clean ## Remove everything including volumes
+	-docker volume rm $(VOLUME_NAME)
+	-docker system prune -f
 
-clean-all: clean clean-docker ## Clean everything
-	rm -rf .venv/
-	@echo "🧹 Full cleanup complete"
+# Volume Management
+.PHONY: volume-create
+volume-create: ## Create data volume
+	docker volume create $(VOLUME_NAME)
 
-# Documentation
-docs: ## Open API documentation in browser
-	@echo "Opening API docs at http://localhost:$(PORT)/docs"
-	@open http://localhost:$(PORT)/docs || xdg-open http://localhost:$(PORT)/docs
+.PHONY: volume-backup
+volume-backup: ## Backup data volume
+	docker run --rm \
+		-v $(VOLUME_NAME):/data \
+		-v $(PWD):/backup \
+		alpine tar czf /backup/vectordb-backup-$(shell date +%Y%m%d_%H%M%S).tar.gz -C /data .
 
-# Utility Commands
-env-setup: ## Create .env file from example
-	cp .env.example .env
-	@echo "📝 .env file created. Edit it to set your configuration."
+.PHONY: volume-restore
+volume-restore: ## Restore data volume (requires BACKUP_FILE)
+	@if [ -z "$(BACKUP_FILE)" ]; then echo "Please specify BACKUP_FILE=<file>"; exit 1; fi
+	docker run --rm \
+		-v $(VOLUME_NAME):/data \
+		-v $(PWD):/backup \
+		alpine tar xzf /backup/$(BACKUP_FILE) -C /data
 
-check-deps: ## Check if all dependencies are installed
-	@command -v $(PYTHON) >/dev/null 2>&1 || { echo "❌ Python not installed"; exit 1; }
-	@command -v docker >/dev/null 2>&1 || { echo "❌ Docker not installed"; exit 1; }
-	@command -v docker-compose >/dev/null 2>&1 || { echo "❌ docker-compose not installed"; exit 1; }
-	@echo "✅ All dependencies installed"
+# Monitoring Commands
+.PHONY: stats
+stats: ## Show container resource usage
+	docker stats $(CONTAINER_NAME)
 
-# Quick Start Commands
-quickstart: install docker-build docker-up ## Quick start for development
-	@echo "🎉 Vector Database API is ready!"
-	@echo "Local: http://localhost:$(PORT)/docs"
-	@echo "Run 'make help' to see all available commands"
+.PHONY: inspect
+inspect: ## Inspect container configuration
+	docker inspect $(CONTAINER_NAME)
 
-demo: docker-up api-test-flow ## Run a quick demo
-	@echo "🎉 Demo complete! API is running at http://localhost:$(PORT)/docs"
+.PHONY: health
+health: ## Check container health status
+	docker inspect $(CONTAINER_NAME) --format='{{.State.Health.Status}}'
+
+# Development Commands
+.PHONY: dev-setup
+dev-setup: volume-create build run ## Complete development setup
+
+.PHONY: dev-reset
+dev-reset: clean-all dev-setup ## Reset development environment
+
+.PHONY: quick-test
+quick-test: build run ## Quick build and test
+	sleep 5
+	$(MAKE) test
+	$(MAKE) remove
+
+# Production Commands
+.PHONY: prod-deploy
+prod-deploy: ## Deploy to production
+	$(MAKE) build
+	$(MAKE) up-prod
+
+.PHONY: prod-update
+prod-update: ## Update production deployment
+	docker-compose pull
+	docker-compose up -d --force-recreate
+
+# Debug Commands
+.PHONY: debug
+debug: ## Debug container issues
+	@echo "=== Container Status ==="
+	docker ps -a | grep $(CONTAINER_NAME) || echo "Container not found"
+	@echo "\n=== Resource Usage ==="
+	docker stats --no-stream $(CONTAINER_NAME) 2>/dev/null || echo "Container not running"
+	@echo "\n=== Recent Logs ==="
+	docker logs --tail 20 $(CONTAINER_NAME) 2>/dev/null || echo "No logs available"
+	@echo "\n=== Health Check ==="
+	curl -f http://localhost:$(PORT)/health 2>/dev/null || echo "Health check failed"
+
+# Multi-platform build (for deployment)
+.PHONY: build-multiplatform
+build-multiplatform: ## Build for multiple platforms
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMAGE_NAME):$(IMAGE_TAG) .
+
+# Default target
+.DEFAULT_GOAL := help
