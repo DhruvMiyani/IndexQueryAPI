@@ -41,10 +41,10 @@ class SearchRequest(BaseModel):
         description="Whether to include text content in results"
     )
     min_score: Optional[float] = Field(
-        None,
-        description="Minimum similarity score threshold",
-        ge=0.0,
-        le=1.0
+    None,
+    description="Minimum similarity score threshold (range: -1.0 to 1.0)",
+    ge=-1.0,
+    le=1.0
     )
 
     def model_post_init(self, __context) -> None:
@@ -79,9 +79,9 @@ class SearchResult(BaseModel):
     chunk_id: UUID = Field(description="ID of the matching chunk")
     document_id: UUID = Field(description="ID of the parent document")
     score: float = Field(
-        description="Similarity score (0.0 to 1.0)",
-        ge=0.0,
-        le=1.0
+    description="Similarity score (range: -1.0 to 1.0)",
+    ge=-1.0,
+    le=1.0
     )
     text: Optional[str] = Field(None, description="Text content of the chunk")
     metadata: Optional[Dict] = Field(None, description="Chunk metadata")

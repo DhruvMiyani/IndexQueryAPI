@@ -9,10 +9,12 @@ from uuid import UUID
 from datetime import datetime
 
 from models.search import SearchRequest, SearchResult, SearchResponse
+from models.metadata_filter import MetadataFilter, FilterStatistics
 from repository import ChunkRepository, DocumentRepository, LibraryRepository
 from indexes import BaseIndex
 from .embedding_service import EmbeddingService
 from .index_service import IndexService
+from .metadata_filter_service import MetadataFilterService
 
 
 class SearchService:
@@ -45,6 +47,7 @@ class SearchService:
         self.library_repo = library_repo
         self.index_service = index_service
         self.embedding_service = embedding_service
+        self.filter_service = MetadataFilterService()
 
     async def search(
         self,

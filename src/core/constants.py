@@ -114,7 +114,7 @@ ENV_LOG_LEVEL = "LOG_LEVEL"
 
 # Contact Information
 CONTACT_NAME = "Vector Database API"
-CONTACT_URL = "https://github.com/your-repo/vector-db-api"
+CONTACT_URL = "https://github.com/your-repo/vectordb-api"
 
 # HTTP Endpoints
 ENDPOINT_ROOT = "/"

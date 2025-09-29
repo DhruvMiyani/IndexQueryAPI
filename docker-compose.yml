@@ -7,7 +7,9 @@ services:
       - "8000:8000"
     environment:
       - PYTHONPATH=/app/src
-      - COHERE_API_KEY=${COHERE_API_KEY:-your_cohere_api_key_here}
+      # Require COHERE_API_KEY to be provided by the environment or an env_file/secret.
+      # Do not provide a default here so the service fails fast when the secret is missing.
+      - COHERE_API_KEY=${COHERE_API_KEY}
     volumes:
       # Persist data across container restarts
       - vectordb_data:/app/data

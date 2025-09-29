@@ -32,7 +32,7 @@ async def setup_services():
     embedding_service.generate_embedding.return_value = [0.1, 0.2, 0.3, 0.4, 0.5]
     embedding_service.generate_embeddings_batch.return_value = [
         [0.1, 0.2, 0.3, 0.4, 0.5],
-        [0.2, 0.3, 0.4, 0.5, 0.6],
+        [0.2, 0.3, 0.4, 0.5, 0. 6],
         [0.3, 0.4, 0.5, 0.6, 0.7]
     ]
 
