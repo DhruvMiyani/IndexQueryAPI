@@ -7,10 +7,12 @@ Handles CRUD operations for chunks within libraries.
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 
 from models.chunk import Chunk, ChunkCreate, ChunkUpdate
+from models.pagination import PaginatedResponse
+from models.field_selection import FieldSelector
 from services.chunk_service import ChunkService
 from repository.base import NotFoundError
 from .dependencies import get_chunk_service
@@ -88,25 +90,46 @@ async def create_chunks_bulk(
 
 @router.get(
     "/",
-    response_model=List[Chunk],
+    response_model=PaginatedResponse[Chunk],
     summary="List chunks in library",
 )
 async def list_chunks(
     library_id: UUID,
-    skip: int = 0,
-    limit: int = 100,
+    limit: int = Query(25, ge=1, le=100, description="Maximum number of items to return"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    fields: Optional[str] = Query(None, description="Comma-separated list of fields to include (e.g., 'id,text,metadata')"),
     chunk_service: ChunkService = Depends(get_chunk_service),
-) -> List[Chunk]:
+) -> PaginatedResponse[Chunk]:
     """
-    List all chunks in the specified library.
+    List all chunks in the specified library with pagination.
 
     - **library_id**: ID of the library
-    - **skip**: Number of chunks to skip (for pagination)
-    - **limit**: Maximum number of chunks to return
+    - **limit**: Maximum number of chunks to return (1-100, default 25)
+    - **offset**: Number of chunks to skip (default 0)
     """
     try:
-        return await chunk_service.list_chunks_by_library(
-            library_id, offset=skip, limit=limit
+        chunks, total = await chunk_service.list_chunks_by_library_paginated(
+            library_id, offset=offset, limit=limit
+        )
+
+        # Apply field selection if requested
+        field_set = FieldSelector.parse_fields_query(fields)
+        if field_set:
+            FieldSelector.validate_fields(field_set, Chunk)
+            filtered_chunks = [
+                Chunk.model_validate(FieldSelector.select_fields(chunk, field_set))
+                for chunk in chunks
+            ]
+        else:
+            filtered_chunks = chunks
+
+        return PaginatedResponse(
+            items=filtered_chunks,
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_next=offset + limit < total,
+            has_previous=offset > 0
         )
     except NotFoundError:
         raise HTTPException(
@@ -128,6 +151,7 @@ async def list_chunks(
 async def get_chunk(
     library_id: UUID,
     chunk_id: UUID,
+    fields: Optional[str] = Query(None, description="Comma-separated list of fields to include"),
     chunk_service: ChunkService = Depends(get_chunk_service),
 ) -> Chunk:
     """
@@ -136,7 +160,15 @@ async def get_chunk(
     Returns chunk content, metadata, and embedding.
     """
     try:
-        return await chunk_service.get_chunk(chunk_id)
+        chunk = await chunk_service.get_chunk(chunk_id)
+
+        # Apply field selection if requested
+        field_set = FieldSelector.parse_fields_query(fields)
+        if field_set:
+            FieldSelector.validate_fields(field_set, Chunk)
+            return Chunk.model_validate(FieldSelector.select_fields(chunk, field_set))
+
+        return chunk
     except NotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

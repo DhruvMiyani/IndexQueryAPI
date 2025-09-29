@@ -7,10 +7,12 @@ Handles CRUD operations for documents within libraries.
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 
 from models.document import Document, DocumentCreate, DocumentUpdate
+from models.pagination import PaginatedResponse
+from models.field_selection import FieldSelector
 from services.document_service import DocumentService
 from repository.base import NotFoundError
 from .dependencies import get_document_service
@@ -57,25 +59,46 @@ async def create_document(
 
 @router.get(
     "/",
-    response_model=List[Document],
+    response_model=PaginatedResponse[Document],
     summary="List documents in library",
 )
 async def list_documents(
     library_id: UUID,
-    skip: int = 0,
-    limit: int = 100,
+    limit: int = Query(25, ge=1, le=100, description="Maximum number of items to return"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    fields: Optional[str] = Query(None, description="Comma-separated list of fields to include"),
     document_service: DocumentService = Depends(get_document_service),
-) -> List[Document]:
+) -> PaginatedResponse[Document]:
     """
-    List all documents in the specified library.
+    List all documents in the specified library with pagination.
 
     - **library_id**: ID of the library
-    - **skip**: Number of documents to skip (for pagination)
-    - **limit**: Maximum number of documents to return
+    - **limit**: Maximum number of documents to return (1-100, default 25)
+    - **offset**: Number of documents to skip (default 0)
     """
     try:
-        return await document_service.list_documents(
-            library_id, offset=skip, limit=limit
+        documents, total = await document_service.list_documents_paginated(
+            library_id, offset=offset, limit=limit
+        )
+
+        # Apply field selection if requested
+        field_set = FieldSelector.parse_fields_query(fields)
+        if field_set:
+            FieldSelector.validate_fields(field_set, Document)
+            filtered_documents = [
+                Document.model_validate(FieldSelector.select_fields(document, field_set))
+                for document in documents
+            ]
+        else:
+            filtered_documents = documents
+
+        return PaginatedResponse(
+            items=filtered_documents,
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_next=offset + limit < total,
+            has_previous=offset > 0
         )
     except NotFoundError:
         raise HTTPException(

@@ -4,7 +4,7 @@ Document service for business logic.
 Handles document management and chunk coordination.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -243,6 +243,27 @@ class DocumentService:
         await self.library_service.get_library(library_id)
 
         return await self.document_repo.get_by_library(library_id, offset, limit)
+
+    async def list_documents_paginated(
+        self, library_id: UUID, offset: int = 0, limit: int = 25
+    ) -> Tuple[List[Document], int]:
+        """
+        List documents in a library with total count.
+
+        Args:
+            library_id: Library ID
+            offset: Number of documents to skip
+            limit: Maximum documents to return
+
+        Returns:
+            Tuple of (documents, total_count)
+        """
+        # Verify library exists
+        await self.library_service.get_library(library_id)
+
+        documents = await self.document_repo.get_by_library(library_id, offset, limit)
+        total = await self.document_repo.count_by_library(library_id)
+        return documents, total
 
     async def update_document(
         self, document_id: UUID, document_data: DocumentUpdate

@@ -16,6 +16,7 @@ from api.document_router import router as document_router
 from api.chunk_router import router as chunk_router
 from api.index_router import router as index_router
 from api.search_router import router as search_router
+from api.operations_router import router as operations_router
 from core.constants import (
     API_TITLE,
     API_VERSION,
@@ -134,6 +135,7 @@ def register_api_routers(application: FastAPI) -> None:
     application.include_router(chunk_router)
     application.include_router(index_router)  # Index before search for better API organization
     application.include_router(search_router)
+    application.include_router(operations_router)  # Operations for async tracking
 
     # Temporary debug routes
     from debug_endpoint import add_debug_routes

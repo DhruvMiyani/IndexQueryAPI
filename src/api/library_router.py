@@ -5,13 +5,16 @@ Handles CRUD operations for libraries with meaningful names,
 early returns, and single responsibility functions.
 """
 
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import Response
 
 from models.library import Library, LibraryCreate, LibraryUpdate
+from models.pagination import PaginatedResponse, PaginationParams
+from models.field_selection import FieldSelector
+from models.enhanced_responses import LibraryResponse
 from services.library_service import LibraryService
 from repository.base import NotFoundError, DuplicateError
 from core.constants import (
@@ -90,26 +93,51 @@ async def create_library_endpoint(
 
 @router.get(
     "/",
-    response_model=List[Library],
+    response_model=PaginatedResponse[LibraryResponse],
     summary="List all libraries",
 )
 async def list_libraries_endpoint(
-    pagination_offset: int = DEFAULT_PAGE_OFFSET,
-    pagination_limit: int = DEFAULT_PAGE_LIMIT,
+    limit: int = Query(25, ge=1, le=100, description="Maximum number of items to return"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    fields: Optional[str] = Query(None, description="Comma-separated list of fields to include"),
     library_service: LibraryService = Depends(get_library_service),
-) -> List[Library]:
+) -> PaginatedResponse[LibraryResponse]:
     """
-    List all libraries with optional pagination.
+    List all libraries with standardized pagination.
 
-    - **pagination_offset**: Number of libraries to skip (for pagination)
-    - **pagination_limit**: Maximum number of libraries to return
+    - **limit**: Maximum number of libraries to return (1-100, default 25)
+    - **offset**: Number of libraries to skip (default 0)
     """
-    validate_pagination_parameters(pagination_offset, pagination_limit)
-
     try:
-        return await library_service.list_libraries(
-            offset=pagination_offset,
-            limit=pagination_limit
+        libraries, total = await library_service.list_libraries_paginated(
+            offset=offset,
+            limit=limit
+        )
+
+        # Convert to HATEOAS responses
+        library_responses = [
+            LibraryResponse.from_library(library)
+            for library in libraries
+        ]
+
+        # Apply field selection if requested
+        field_set = FieldSelector.parse_fields_query(fields)
+        if field_set:
+            FieldSelector.validate_fields(field_set, LibraryResponse)
+            filtered_libraries = [
+                LibraryResponse.model_validate(FieldSelector.select_fields(lib_resp, field_set))
+                for lib_resp in library_responses
+            ]
+        else:
+            filtered_libraries = library_responses
+
+        return PaginatedResponse(
+            items=filtered_libraries,
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_next=offset + limit < total,
+            has_previous=offset > 0
         )
     except Exception as unexpected_error:
         raise handle_internal_server_error("list libraries", unexpected_error)

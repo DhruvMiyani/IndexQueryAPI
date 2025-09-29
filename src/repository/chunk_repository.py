@@ -67,6 +67,18 @@ class ChunkRepository(BaseRepository[Chunk]):
         """
         raise NotImplementedError
 
+    async def count_by_library(self, library_id: UUID) -> int:
+        """
+        Count chunks in a library.
+
+        Args:
+            library_id: The library ID
+
+        Returns:
+            Number of chunks in the library
+        """
+        raise NotImplementedError
+
 
 class InMemoryChunkRepository(ChunkRepository):
     """
@@ -251,3 +263,9 @@ class InMemoryChunkRepository(ChunkRepository):
                     chunk = self._chunks[chunk_id]
                     vectors.append((chunk_id, chunk.embedding))
             return vectors
+
+    async def count_by_library(self, library_id: UUID) -> int:
+        """Count chunks in a library."""
+        async with self._lock:
+            chunk_ids = self._library_chunks.get(library_id, [])
+            return len(chunk_ids)

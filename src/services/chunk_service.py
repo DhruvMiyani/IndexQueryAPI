@@ -4,7 +4,7 @@ Chunk service for business logic.
 Handles chunk operations and embedding management.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -239,6 +239,24 @@ class ChunkService:
             List of chunks
         """
         return await self.chunk_repo.get_by_library(library_id, offset, limit)
+
+    async def list_chunks_by_library_paginated(
+        self, library_id: UUID, offset: int = 0, limit: int = 25
+    ) -> Tuple[List[Chunk], int]:
+        """
+        List chunks in a library with total count.
+
+        Args:
+            library_id: Library ID
+            offset: Number of chunks to skip
+            limit: Maximum chunks to return
+
+        Returns:
+            Tuple of (chunks, total_count)
+        """
+        chunks = await self.chunk_repo.get_by_library(library_id, offset, limit)
+        total = await self.chunk_repo.count_by_library(library_id)
+        return chunks, total
 
     async def delete_chunk(self, chunk_id: UUID) -> bool:
         """

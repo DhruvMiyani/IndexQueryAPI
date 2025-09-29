@@ -4,7 +4,7 @@ Library service for business logic.
 Handles library lifecycle, statistics, and cascade operations.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -86,6 +86,23 @@ class LibraryService:
             List of libraries
         """
         return await self.library_repo.list(limit=limit, offset=offset)
+
+    async def list_libraries_paginated(
+        self, limit: int = 25, offset: int = 0
+    ) -> Tuple[List[Library], int]:
+        """
+        List libraries with total count for pagination.
+
+        Args:
+            limit: Maximum number to return
+            offset: Number to skip
+
+        Returns:
+            Tuple of (libraries, total_count)
+        """
+        libraries = await self.library_repo.list(limit=limit, offset=offset)
+        total = await self.library_repo.count()
+        return libraries, total
 
     async def update_library(
         self, library_id: UUID, update_data: LibraryUpdate

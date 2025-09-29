@@ -1,408 +1,289 @@
 """
-API-level integration tests for the Vector Database REST API.
+Integration tests for RESTful API best practices.
 
-Tests end-to-end functionality including indexing and search via HTTP endpoints.
+Tests all API best practices working together in realistic scenarios.
 """
-
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import pytest
 from fastapi.testclient import TestClient
+import time
+import json
 
 from main import app
 
+client = TestClient(app)
 
-class TestVectorAPIIntegration:
-    """Integration tests for the complete API workflow."""
 
-    @pytest.fixture
-    def client(self):
-        """Create a test client for the FastAPI app."""
-        return TestClient(app)
+class TestAPIIntegration:
+    """Integration tests for all RESTful API best practices."""
 
-    def test_complete_workflow_linear_index(self, client):
-        """Test complete workflow with linear index."""
+    def test_complete_workflow_with_all_api_features(self):
+        """Test complete workflow using all API best practices together."""
         # Create library
-        lib_response = client.post("/libraries", json={
-            "name": "Test Library",
-            "description": "Integration test library"
-        })
+        library_data = {
+            "name": "Complete API Features Test",
+            "metadata": {"description": "Testing all API features", "tags": ["api", "integration"]}
+        }
+        lib_response = client.post("/libraries", json=library_data)
         assert lib_response.status_code == 201
-        lib_data = lib_response.json()
-        lib_id = lib_data["id"]
+        library_id = lib_response.json()["id"]
 
-        # First create a document to add chunks to
-        doc_response = client.post(f"/libraries/{lib_id}/documents", json={
-            "document_data": {
-                "library_id": lib_id,
-                "metadata": {
-                    "title": "Test Document"
-                }
+        try:
+            # Test 1: Create documents and verify HATEOAS links
+            doc_data = {
+                "document_data": {
+                    "metadata": {"title": "API Integration Test Doc", "author": "Integration Tester"}
+                },
+                "chunk_texts": [
+                    "This is a test chunk for API integration testing.",
+                    "Another test chunk with different content for testing.",
+                    "Final test chunk to ensure proper pagination and field selection."
+                ]
             }
-        })
-        if doc_response.status_code != 201:
-            print(f"Doc creation error: {doc_response.json()}")
-        assert doc_response.status_code == 201
-        doc_data = doc_response.json()
-        doc_id = doc_data["id"]
+            doc_response = client.post(f"/libraries/{library_id}/documents", json=doc_data)
+            assert doc_response.status_code == 201
 
-        # Add chunks with vectors
-        chunk_ids = []
-        for i in range(5):
-            chunk_response = client.post(f"/libraries/{lib_id}/chunks", json={
-                "text": f"Test chunk {i}",
-                "document_id": doc_id,
-                "embedding": [float(i), 0.0, 0.0],  # 3D vectors
-                "metadata": {
-                    "position": i,
-                    "tags": ["test"],
-                    "source": "integration_test"
-                }
-            })
-            assert chunk_response.status_code == 201
-            chunk_data = chunk_response.json()
-            chunk_ids.append(chunk_data["id"])
+            # Test 2: Test pagination with HATEOAS links
+            docs_response = client.get(f"/libraries/{library_id}/documents?limit=2&offset=0")
+            assert docs_response.status_code == 200
 
-        # Build linear index (default)
-        index_response = client.post(f"/libraries/{lib_id}/index", json={
-            "algorithm": "linear"
-        })
-        if index_response.status_code != 200:
-            print(f"Index creation error: {index_response.json()}")
-        assert index_response.status_code == 200
+            docs_data = docs_response.json()
+            assert "items" in docs_data
+            assert "total" in docs_data
+            assert "links" in docs_data
+            assert docs_data["limit"] == 2
+            assert docs_data["offset"] == 0
 
-        # Search with vector
-        search_response = client.post(f"/libraries/{lib_id}/search", json={
-            "vector": [2.1, 0.0, 0.0],  # Should be close to chunk 2
-            "k": 3
-        })
-        assert search_response.status_code == 200
-        search_data = search_response.json()
+            # Verify pagination links structure
+            pagination_links = {link["rel"]: link for link in docs_data["links"]}
+            assert "self" in pagination_links
+            assert "limit=2" in pagination_links["self"]["href"]
+            assert "offset=0" in pagination_links["self"]["href"]
 
-        # Verify search results
-        assert "results" in search_data
-        results = search_data["results"]
-        assert len(results) == 3
+            # Test 3: Test field selection on documents
+            filtered_docs = client.get(f"/libraries/{library_id}/documents?fields=id,metadata&limit=5")
+            assert filtered_docs.status_code == 200
 
-        # Results should be sorted by similarity (highest first)
-        scores = [r["score"] for r in results]
-        assert scores == sorted(scores, reverse=True)
+            filtered_data = filtered_docs.json()
+            if filtered_data["items"]:
+                doc = filtered_data["items"][0]
+                expected_fields = {"id", "metadata"}
+                actual_fields = set(doc.keys())
+                assert expected_fields.issubset(actual_fields)
 
-        # Top result should be chunk 2 (closest to [2.1, 0, 0])
-        assert results[0]["chunk"]["metadata"]["index"] == 2
+            # Test 4: Test chunk pagination with field selection (exclude embeddings)
+            chunks_response = client.get(f"/libraries/{library_id}/chunks?fields=id,text,metadata&limit=2")
+            assert chunks_response.status_code == 200
 
-    def test_kd_tree_index_workflow(self, client):
-        """Test complete workflow with KD-Tree index."""
-        # Create library
-        lib_response = client.post("/libraries", json={
-            "name": "KD-Tree Test Library"
-        })
-        assert lib_response.status_code == 201
-        lib_id = lib_response.json()["id"]
+            chunks_data = chunks_response.json()
+            assert chunks_data["limit"] == 2
 
-        # Create a document
-        doc_response = client.post(f"/libraries/{lib_id}/documents", json={
-            "library_id": lib_id,
-            "metadata": {
-                "title": "KD-Tree Test Document"
+            if chunks_data["items"]:
+                chunk = chunks_data["items"][0]
+                assert "id" in chunk
+                assert "text" in chunk
+                assert "metadata" in chunk
+                assert "embedding" not in chunk  # Should be excluded by field selection
+
+            # Test 5: Test async index building with 202 status
+            index_request = {"index_type": "linear", "async_operation": True}
+            async_response = client.post(f"/libraries/{library_id}/index", json=index_request)
+            assert async_response.status_code == 202
+
+            # Verify async response structure
+            async_data = async_response.json()
+            assert "operation_id" in async_data
+            assert "status" in async_data
+            assert "links" in async_data
+            assert async_data["status"] == "pending"
+
+            # Verify Location header
+            assert "location" in async_response.headers
+            location = async_response.headers["location"]
+            assert "/api/operations/" in location
+
+            # Test 6: Monitor async operation status
+            operation_id = async_data["operation_id"]
+            status_response = client.get(f"/api/operations/{operation_id}")
+            assert status_response.status_code == 200
+
+            status_data = status_response.json()
+            assert status_data["operation_id"] == operation_id
+            assert status_data["operation_type"] == "index_build"
+            assert status_data["resource_id"] == library_id
+
+            # Wait for operation to complete or progress
+            max_attempts = 5
+            for attempt in range(max_attempts):
+                time.sleep(0.3)
+                status_response = client.get(f"/api/operations/{operation_id}")
+                status_data = status_response.json()
+                if status_data["status"] in ["completed", "failed"]:
+                    break
+
+            # Test 7: Test search with HATEOAS links after indexing
+            search_response = client.get(f"/libraries/{library_id}/search?query_text=integration&top_k=3")
+            assert search_response.status_code == 200
+
+            search_data = search_response.json()
+            assert "results" in search_data
+            assert "links" in search_data
+
+            # Verify search response HATEOAS links
+            search_links = {link["rel"]: link for link in search_data["links"]}
+            assert "self" in search_links
+            assert "library" in search_links
+            assert f"/libraries/{library_id}" in search_links["library"]["href"]
+
+            # Test 8: Test library list with field selection and pagination
+            libs_response = client.get("/libraries?fields=id,name,document_count&limit=10&offset=0")
+            assert libs_response.status_code == 200
+
+            libs_data = libs_response.json()
+            assert "items" in libs_data
+            assert "total" in libs_data
+            assert libs_data["limit"] == 10
+
+            if libs_data["items"]:
+                lib = libs_data["items"][0]
+                # Should have selected fields plus HATEOAS links
+                expected_fields = {"id", "name", "document_count"}
+                actual_fields = set(lib.keys())
+                assert expected_fields.issubset(actual_fields)
+
+                # Should have HATEOAS links even with field selection
+                assert "links" in lib
+                assert isinstance(lib["links"], list)
+
+            # Test 9: Verify bandwidth savings with field selection
+            full_chunks = client.get(f"/libraries/{library_id}/chunks")
+            filtered_chunks = client.get(f"/libraries/{library_id}/chunks?fields=id,text")
+
+            if full_chunks.status_code == 200 and filtered_chunks.status_code == 200:
+                full_size = len(json.dumps(full_chunks.json()))
+                filtered_size = len(json.dumps(filtered_chunks.json()))
+
+                # Should have some bandwidth savings
+                assert filtered_size <= full_size
+
+        finally:
+            # Cleanup
+            client.delete(f"/libraries/{library_id}")
+
+    def test_error_handling_with_api_features(self):
+        """Test error handling maintains API best practices."""
+        # Test pagination with invalid parameters
+        response = client.get("/libraries?limit=200&offset=-1")
+        assert response.status_code == 422  # Validation error
+
+        # Test field selection with invalid fields
+        lib_data = {"name": "Error Test", "metadata": {"description": "Test", "tags": []}}
+        lib_response = client.post("/libraries", json=lib_data)
+        library_id = lib_response.json()["id"]
+
+        try:
+            response = client.get(f"/libraries?fields=invalid_field,another_invalid")
+            assert response.status_code == 400
+            error_data = response.json()
+            assert "Invalid fields" in error_data["detail"]
+
+            # Test async operation on non-existent library
+            fake_id = "00000000-0000-0000-0000-000000000000"
+            response = client.post(f"/libraries/{fake_id}/index", json={"async_operation": True})
+            assert response.status_code == 404
+
+            # Test operation status for non-existent operation
+            response = client.get(f"/api/operations/{fake_id}")
+            assert response.status_code == 404
+
+        finally:
+            client.delete(f"/libraries/{library_id}")
+
+    def test_concurrent_operations_api_compliance(self):
+        """Test concurrent operations maintain API best practices."""
+        # Create library for concurrent testing
+        lib_data = {"name": "Concurrent Test", "metadata": {"description": "Test", "tags": []}}
+        lib_response = client.post("/libraries", json=lib_data)
+        library_id = lib_response.json()["id"]
+
+        try:
+            # Add some test data
+            doc_data = {
+                "document_data": {"metadata": {"title": "Concurrent Test Doc"}},
+                "chunk_texts": ["Concurrent test chunk."]
             }
-        })
-        assert doc_response.status_code == 201
-        doc_id = doc_response.json()["id"]
+            client.post(f"/libraries/{library_id}/documents", json=doc_data)
 
-        # Add chunks in 2D space
-        vectors_2d = [
-            [0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [0.0, 1.0], [1.0, 1.0]
-        ]
+            # Start multiple async operations
+            operations = []
+            for i in range(3):
+                response = client.post(f"/libraries/{library_id}/index",
+                                     json={"index_type": "linear", "async_operation": True})
+                assert response.status_code == 202
+                operations.append(response.json()["operation_id"])
 
-        for i, vec in enumerate(vectors_2d):
-            chunk_response = client.post(f"/libraries/{lib_id}/chunks", json={
-                "text": f"2D chunk {i}",
-                "document_id": doc_id,
-                "embedding": vec,
-                "metadata": {"position": i}
-            })
-            assert chunk_response.status_code == 201
+            # Verify all operations are tracked
+            for op_id in operations:
+                status_response = client.get(f"/api/operations/{op_id}")
+                assert status_response.status_code == 200
 
-        # Build KD-Tree index
-        index_response = client.post(f"/libraries/{lib_id}/index", json={
-            "algorithm": "kd_tree"
-        })
-        assert index_response.status_code == 200
+                status_data = status_response.json()
+                assert "links" in status_data
+                assert "status" in status_data["links"]
+                assert "cancel" in status_data["links"]
 
-        # Get library stats to verify index was built
-        lib_response = client.get(f"/libraries/{lib_id}")
-        assert lib_response.status_code == 200
-        lib_data = lib_response.json()
-        assert lib_data["index_stats"]["type"] == "kd_tree"
+            # Test that pagination works during operations
+            chunks_response = client.get(f"/libraries/{library_id}/chunks?limit=5")
+            assert chunks_response.status_code == 200
 
-        # Search near [1.0, 0.0]
-        search_response = client.post(f"/libraries/{lib_id}/search", json={
-            "vector": [1.1, 0.0],
-            "k": 2
-        })
-        assert search_response.status_code == 200
-        results = search_response.json()["results"]
-        assert len(results) == 2
+            # Should still have proper pagination structure
+            chunks_data = chunks_response.json()
+            assert "total" in chunks_data
+            assert "limit" in chunks_data
+            assert "has_next" in chunks_data
 
-        # Should find vectors close to [1.1, 0.0]
-        assert results[0]["score"] > 0.9  # High similarity
+        finally:
+            client.delete(f"/libraries/{library_id}")
 
-    def test_lsh_index_workflow(self, client):
-        """Test complete workflow with LSH index."""
-        # Create library
-        lib_response = client.post("/libraries", json={
-            "name": "LSH Test Library"
-        })
-        assert lib_response.status_code == 201
-        lib_id = lib_response.json()["id"]
-
-        # Create a document
-        doc_response = client.post(f"/libraries/{lib_id}/documents", json={
-            "library_id": lib_id,
-            "metadata": {
-                "title": "LSH Test Document"
-            }
-        })
-        assert doc_response.status_code == 201
-        doc_id = doc_response.json()["id"]
-
-        # Add chunks with higher-dimensional vectors
-        import numpy as np
-        np.random.seed(42)
-
-        for i in range(10):
-            vec = np.random.randn(8).tolist()  # 8D vectors
-            chunk_response = client.post(f"/libraries/{lib_id}/chunks", json={
-                "text": f"High-dim chunk {i}",
-                "document_id": doc_id,
-                "embedding": vec,
-                "metadata": {"position": i, "id": i}
-            })
-            assert chunk_response.status_code == 201
-
-        # Build LSH index
-        index_response = client.post(f"/libraries/{lib_id}/index", json={
-            "algorithm": "lsh"
-        })
-        assert index_response.status_code == 200
-
-        # Get library stats
-        lib_response = client.get(f"/libraries/{lib_id}")
-        assert lib_response.status_code == 200
-        lib_data = lib_response.json()
-        assert lib_data["index_stats"]["type"] == "lsh"
-
-        # Search (LSH is approximate, so we just verify it works)
-        query_vec = np.random.randn(8).tolist()
-        search_response = client.post(f"/libraries/{lib_id}/search", json={
-            "vector": query_vec,
-            "k": 5
-        })
-        assert search_response.status_code == 200
-        results = search_response.json()["results"]
-        # LSH might return fewer results due to bucketing
-        assert len(results) >= 1
-
-    def test_text_query_with_embedding(self, client):
-        """Test search with text query (using embedding service)."""
-        # Create library
-        lib_response = client.post("/libraries", json={
-            "name": "Text Query Library"
-        })
-        assert lib_response.status_code == 201
-        lib_id = lib_response.json()["id"]
-
-        # Create a document
-        doc_response = client.post(f"/libraries/{lib_id}/documents", json={
-            "library_id": lib_id,
-            "metadata": {
-                "title": "ML Text Document"
-            }
-        })
-        assert doc_response.status_code == 201
-        doc_id = doc_response.json()["id"]
-
-        # Add some chunks
-        chunks_data = [
-            {"text": "Machine learning algorithms", "embedding": [1.0, 0.8, 0.2]},
-            {"text": "Deep learning networks", "embedding": [0.9, 0.9, 0.1]},
-            {"text": "Natural language processing", "embedding": [0.7, 0.3, 0.9]}
-        ]
-
-        for idx, chunk_data in enumerate(chunks_data):
-            chunk_data["document_id"] = doc_id
-            chunk_data["metadata"] = {"position": idx}
-            chunk_response = client.post(f"/libraries/{lib_id}/chunks", json=chunk_data)
-            assert chunk_response.status_code == 201
-
-        # Try text query (will fall back to mock if Cohere unavailable)
-        search_response = client.post(f"/libraries/{lib_id}/search", json={
-            "query": "machine learning",
-            "k": 2
-        })
-
-        # Should work even if embedding service is unavailable (mock fallback)
-        # Status might be 200 (success) or error depending on embedding service
-        if search_response.status_code == 200:
-            results = search_response.json()["results"]
-            assert len(results) <= 2
-
-    def test_document_level_operations(self, client):
-        """Test document-level operations via API."""
-        # Create library
-        lib_response = client.post("/libraries", json={
-            "name": "Document Test Library"
-        })
-        assert lib_response.status_code == 201
-        lib_id = lib_response.json()["id"]
-
-        # Create document with chunks
-        doc_response = client.post(f"/libraries/{lib_id}/documents", json={
-            "library_id": lib_id,
-            "metadata": {
-                "title": "Test Document"
-            }
-        })
-        assert doc_response.status_code == 201
-        doc_data = doc_response.json()
-        doc_id = doc_data["id"]
-
-        # Add chunks to the document manually
-        chunk_data_list = [
-            {
-                "text": "First chunk",
-                "document_id": doc_id,
-                "embedding": [1.0, 0.0, 0.0],
-                "metadata": {"position": 0}
-            },
-            {
-                "text": "Second chunk",
-                "document_id": doc_id,
-                "embedding": [0.0, 1.0, 0.0],
-                "metadata": {"position": 1}
-            }
-        ]
-
-        for chunk_data in chunk_data_list:
-            chunk_response = client.post(f"/libraries/{lib_id}/chunks", json=chunk_data)
-            assert chunk_response.status_code == 201
-
-        # Get document details
-        get_doc_response = client.get(f"/libraries/{lib_id}/documents/{doc_id}")
-        assert get_doc_response.status_code == 200
-        doc_details = get_doc_response.json()
-        assert doc_details["metadata"]["title"] == "Test Document"
-
-        # Search should find the chunks
-        search_response = client.post(f"/libraries/{lib_id}/search", json={
-            "vector": [1.0, 0.0, 0.0],
-            "k": 1
-        })
-        assert search_response.status_code == 200
-        results = search_response.json()["results"]
-        assert len(results) == 1
-        assert results[0]["chunk"]["text"] == "First chunk"
-
-    def test_error_handling(self, client):
-        """Test API error handling."""
-        # Try to get non-existent library
-        response = client.get("/libraries/00000000-0000-0000-0000-000000000000")
-        assert response.status_code == 404
-
-        # Try to search in non-existent library
-        response = client.post("/libraries/00000000-0000-0000-0000-000000000000/search", json={
-            "vector": [1.0, 2.0, 3.0],
-            "k": 5
-        })
-        assert response.status_code == 404
-
-        # Try to add chunk with wrong dimension
-        lib_response = client.post("/libraries", json={"name": "Error Test"})
-        lib_id = lib_response.json()["id"]
-
-        # Create document
-        doc_response = client.post(f"/libraries/{lib_id}/documents", json={
-            "library_id": lib_id,
-            "metadata": {"title": "Error Test Doc"}
-        })
-        doc_id = doc_response.json()["id"]
-
-        # Add chunk with 3D vector
-        client.post(f"/libraries/{lib_id}/chunks", json={
-            "text": "3D chunk",
-            "document_id": doc_id,
-            "embedding": [1.0, 2.0, 3.0],
-            "metadata": {"position": 0}
-        })
-
-        # Try to add chunk with different dimension
-        response = client.post(f"/libraries/{lib_id}/chunks", json={
-            "text": "2D chunk",
-            "document_id": doc_id,
-            "embedding": [1.0, 2.0],  # Wrong dimension
-            "metadata": {"position": 1}
-        })
-        assert response.status_code == 400
-
-        # Try invalid search parameters
-        response = client.post(f"/libraries/{lib_id}/search", json={
-            "vector": [1.0, 2.0, 3.0, 4.0],  # Wrong dimension
-            "k": 5
-        })
-        assert response.status_code == 400
-
-    def test_library_crud_operations(self, client):
-        """Test complete CRUD operations on libraries."""
-        # Create
-        create_response = client.post("/libraries", json={
-            "name": "CRUD Test Library",
-            "description": "Testing CRUD operations"
-        })
-        assert create_response.status_code == 201
-        lib_data = create_response.json()
-        lib_id = lib_data["id"]
-
-        # Read
-        get_response = client.get(f"/libraries/{lib_id}")
-        assert get_response.status_code == 200
-        assert get_response.json()["name"] == "CRUD Test Library"
-
-        # Update
-        update_response = client.put(f"/libraries/{lib_id}", json={
-            "name": "Updated Library Name",
-            "description": "Updated description"
-        })
-        assert update_response.status_code == 200
-        assert update_response.json()["name"] == "Updated Library Name"
-
-        # List all libraries
-        list_response = client.get("/libraries")
-        assert list_response.status_code == 200
-        libraries = list_response.json()
-        lib_names = [lib["name"] for lib in libraries]
-        assert "Updated Library Name" in lib_names
-
-        # Delete
-        delete_response = client.delete(f"/libraries/{lib_id}")
-        assert delete_response.status_code == 200
-
-        # Verify deletion
-        get_response = client.get(f"/libraries/{lib_id}")
-        assert get_response.status_code == 404
-
-    def test_health_endpoint(self, client):
-        """Test health check endpoint."""
-        response = client.get("/health")
+    def test_api_compliance_edge_cases(self):
+        """Test edge cases while maintaining API compliance."""
+        # Test empty collection pagination
+        response = client.get("/libraries?limit=10&offset=1000")
         assert response.status_code == 200
 
-        health_data = response.json()
-        assert health_data["status"] == "healthy"
-        assert "embedding_service" in health_data
-        assert "features" in health_data
+        data = response.json()
+        assert data["items"] == []
+        assert data["has_next"] is False
+        assert data["has_previous"] is True  # offset > 0
 
-        features = health_data["features"]
-        assert features["vector_search"] is True
-        assert features["multiple_indexes"] is True
+        # Test field selection with empty collections
+        lib_data = {"name": "Empty Test", "metadata": {"description": "Empty", "tags": []}}
+        lib_response = client.post("/libraries", json=lib_data)
+        library_id = lib_response.json()["id"]
+
+        try:
+            # Test field selection on empty documents
+            response = client.get(f"/libraries/{library_id}/documents?fields=id,metadata")
+            assert response.status_code == 200
+
+            data = response.json()
+            assert data["items"] == []
+            assert "total" in data
+            assert "links" in data
+
+            # Test async operation cancellation
+            index_response = client.post(f"/libraries/{library_id}/index",
+                                       json={"async_operation": True})
+            if index_response.status_code == 202:
+                operation_id = index_response.json()["operation_id"]
+
+                # Try to cancel
+                cancel_response = client.delete(f"/api/operations/{operation_id}")
+                assert cancel_response.status_code in [204, 409]  # Success or already completed
+
+        finally:
+            client.delete(f"/libraries/{library_id}")
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -43,6 +43,18 @@ class DocumentRepository(BaseRepository[Document]):
         """
         raise NotImplementedError
 
+    async def count_by_library(self, library_id: UUID) -> int:
+        """
+        Count documents in a library.
+
+        Args:
+            library_id: The library ID
+
+        Returns:
+            Number of documents in the library
+        """
+        raise NotImplementedError
+
 
 class InMemoryDocumentRepository(DocumentRepository):
     """
@@ -178,3 +190,9 @@ class InMemoryDocumentRepository(DocumentRepository):
                 del self._library_index[library_id]
 
             return count
+
+    async def count_by_library(self, library_id: UUID) -> int:
+        """Count documents in a library."""
+        async with self._lock:
+            document_ids = self._library_index.get(library_id, [])
+            return len(document_ids)
