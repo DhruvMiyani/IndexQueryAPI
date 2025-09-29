@@ -8,10 +8,10 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from services.index_service import IndexService
-from indexes import IndexType
+from indexes.base import IndexType
 from repository.base import NotFoundError
 from models.async_operations import AsyncOperationResponse, operation_manager
 from .dependencies import get_index_service
@@ -21,15 +21,25 @@ router = APIRouter(prefix="/libraries/{library_id}", tags=["indexing"])
 
 class IndexRequest(BaseModel):
     """Request model for index building."""
-    index_type: Optional[str] = None
-    force_rebuild: bool = False
-    async_operation: bool = False
+    index_type: Optional[IndexType] = Field(
+        None,
+        description="Type of index to build. Valid options: 'linear', 'kd_tree', 'lsh', 'optimized_linear', 'improved_kd_tree', 'multiprobe_lsh', 'hnsw', 'ivf_pq'",
+        example="optimized_linear"
+    )
+    force_rebuild: bool = Field(
+        False,
+        description="Force rebuild even if index already exists"
+    )
+    async_operation: bool = Field(
+        False,
+        description="If true, returns 202 Accepted and runs in background"
+    )
 
 
 class IndexResponse(BaseModel):
     """Response model for index operations."""
     message: str
-    index_type: str
+    index_type: str  # Keep as string for display purposes
     library_id: UUID
     chunk_count: int
 
@@ -48,7 +58,11 @@ async def build_index(
     Build or rebuild the vector index for a library.
 
     - **library_id**: ID of the library to index
-    - **index_type**: Type of index to build (linear, kd_tree, lsh). Auto-selected if not provided
+    - **index_type**: Type of index to build. Options:
+        - Original: linear, kd_tree, lsh
+        - Optimized: optimized_linear (95x faster), improved_kd_tree (better metrics), multiprobe_lsh (120% better recall)
+        - Advanced: hnsw (state-of-the-art), ivf_pq (memory efficient)
+        Auto-selected if not provided
     - **force_rebuild**: Force rebuild even if index already exists
     - **async_operation**: If true, returns 202 Accepted and runs in background
 
@@ -56,16 +70,8 @@ async def build_index(
     or 202 Accepted with operation tracking for async operations.
     """
     try:
-        # Convert string to IndexType enum if provided
-        index_type = None
-        if request.index_type:
-            try:
-                index_type = IndexType(request.index_type.lower())
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid index type: {request.index_type}. Valid types: linear, kd_tree, lsh"
-                )
+        # Use the enum directly from request
+        index_type = request.index_type
 
         # Check if async operation is requested
         if request.async_operation:

@@ -7,7 +7,8 @@ Handles index lifecycle and algorithm selection.
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from indexes import BaseIndex, IndexType, IndexFactory
+from indexes import BaseIndex, IndexType
+from indexes.advanced_index_factory import AdvancedIndexFactory
 from repository import ChunkRepository, LibraryRepository
 
 
@@ -68,7 +69,7 @@ class IndexService:
 
         # Auto-select index type if not provided
         if index_type is None:
-            index_type = IndexFactory.recommend_index_type(
+            index_type = AdvancedIndexFactory.recommend_index_type(
                 dimension=dimension,
                 dataset_size=len(vectors),
                 accuracy_required=True,
@@ -80,7 +81,7 @@ class IndexService:
 
         try:
             # Create index
-            index = IndexFactory.create(index_type, dimension)
+            index = AdvancedIndexFactory.create(index_type, dimension)
 
             # Build index with vectors
             index.build(vectors)
