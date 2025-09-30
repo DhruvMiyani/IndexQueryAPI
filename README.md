@@ -136,7 +136,7 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
 }
 ```
 
-# Vector Database API - Architecture Diagram
+##  Architecture Diagram
 
 ## Complete System Architecture (Domain-Driven Design)
 
@@ -542,7 +542,7 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
-### Planning to do 
+------------------------------ TO DO
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                           DEPLOYMENT ARCHITECTURE                                │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -582,59 +582,9 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
                           └──────────────────────┘
 
          Docker Volume: vectordb_data (mounted to /app/data)
-
-
-
-<!--
-
-- Local development: set the environment variable `COHERE_API_KEY` before running the app, for example:
-
-  export COHERE_API_KEY="your_key_here"
-
-- Docker: pass the key into the container when running the image:
-
-  docker run -p 8000:8000 -e COHERE_API_KEY="$COHERE_API_KEY" --name vector-api vector-db-api
-
-- CI (GitHub Actions): store the key in repository Secrets (e.g., `COHERE_API_KEY`) and inject it into your workflow step:
-
-  env:
-    COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-
-Keep the key secret. Refer to Cohere's docs for rotation and security best practices.
-
-### Installation
-
-#### Option 1: Local Development
-```bash
-# Clone the repository
-git clone <repository-url>
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variable for Cohere API
-export COHERE_API_KEY=
-
-# Run the application
-cd src
-python main.py
 ```
 
-#### Option 2: Docker
-```bash
-# Build the Docker image
-docker build -t vector-db-api .
 
-# Run the container
-docker run -p 8000:8000 \
-  -e COHERE_API_KEY= \
-  --name vector-api \
-  vector-db-api
-```
 
 ## Manual Testing Guide - Complete Flow
 
