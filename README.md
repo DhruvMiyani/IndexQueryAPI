@@ -1,8 +1,8 @@
 # Vector Database REST API
 
-A high-performance vector database REST API built with FastAPI, featuring custom-implemented indexing algorithms for k-nearest neighbor search.
+A high-performance vector database REST API built with FastAPI
 
-## For Reviewers - Quick Docker Setup
+##  Quick Setup
 
 ### Prerequisites
 - **Docker Engine 20.10+** and **Docker Compose 2.0+**
