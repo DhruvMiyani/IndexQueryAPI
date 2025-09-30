@@ -70,12 +70,7 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
 
 ### 7. Follow the Manual Testing Guide
 
-**Step 7.1: Health Check**
-- Click on **GET /health**
-- Click "Try it out" → "Execute"
-- Verify response shows `"status": "healthy"`
-
-**Step 7.2: Create a Library**
+**Step 7.1: Create a Library**
 - Click on **POST /libraries**
 - Use this JSON:
 ```json
@@ -89,35 +84,38 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
 ```
 - Copy the returned `library_id`
 
-**Step 7.3: Create a Document**
+**Step 7.2: Create a Document & add Chunks**
 - Click on **POST /libraries/{library_id}/documents**
 - Replace `{library_id}` with your copied ID
 - Use this JSON:
 ```json
 {
-  "library_id": "your-library-id-here",
-  "metadata": {
-    "title": "Introduction to Machine Learning"
-  }
+  "document_data": {
+    "metadata": {
+      "title": "string",
+      "author": "string",
+      "created_at": "2025-09-30T06:24:03.501Z",
+      "updated_at": "2025-09-30T06:24:03.501Z",
+      "source": "string",
+      "file_type": "string",
+      "file_size": 0,
+      "tags": [
+        "string"
+      ],
+      "category": "string",
+      "language": "string"
+    }
+  },
+  "chunk_texts": [
+    "Artificial intelligence (AI) is the simulation of human intelligence in machines to perform tasks and learn from experience, often involving complex reasoning, planning, and decision-making"
+  ]
 }
-```
 - Copy the returned `document_id`
-
-**Step 7.4: Add Chunks**
-- Click on **POST /libraries/{library_id}/chunks**
-- Add several chunks with different texts:
-```json
-{
-  "text": "Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience.",
-  "document_id": "your-document-id-here",
-  "metadata": {
-    "position": 0,
-    "tags": ["introduction"]
-  }
-}
 ```
 
-**Step 7.5: Build Index**
+
+```
+**Step 7.3: Build Index**
 - Click on **POST /libraries/{library_id}/index**
 - Try different index types:
 ```json
@@ -126,7 +124,7 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
 }
 ```
 
-**Step 7.6: Perform Search**
+**Step 7.4: Perform Search**
 - Click on **POST /libraries/{library_id}/search**
 - Test semantic search:
 ```json
@@ -138,35 +136,7 @@ curl -X POST "http://localhost:8000/libraries/$LIBRARY_ID/search" \
 }
 ```
 
-### 8. Complete Demo
-```bash
-# View the complete walkthrough
-cat DEMO_WALKTHROUGH.md
-
-# Run automated tests
-make test
-```
-
-### 9. Management Commands
-```bash
-make logs    # View logs
-make stop    # Stop container
-make remove  # Remove container
-make clean   # Complete cleanup
-```
-
-## Quick Start
-
-### Prerequisites
-- Python 3.10+
-- Docker (optional)
-- Cohere API key
-
-### Cohere API Key
-
-A Cohere API key is required for embedding generation. Create an API key by signing up at https://cohere.ai/ and visiting your dashboard (https://dashboard.cohere.ai/) — see Cohere's authentication docs for more detail: https://docs.cohere.com/docs/authentication.
-
-Quick setup:
+<!--
 
 - Local development: set the environment variable `COHERE_API_KEY` before running the app, for example:
 
@@ -421,8 +391,9 @@ Expected response structure:
    - Search times
    - Result accuracy
    - Similarity scores
+-->
 
-### Step 8: Test CRUD Operations
+###  Test CRUD Operations
 
 #### Update a Chunk:
 1. Click on **PUT /libraries/{library_id}/chunks/{chunk_id}**
@@ -463,7 +434,7 @@ Expected response structure:
 }
 ```
 
-### Step 10: Performance Testing
+###  Performance Testing
 
 1. Create a library with many chunks (50+)
 2. Compare search performance:
@@ -558,13 +529,6 @@ pytest --cov=src --cov-report=html
 pytest tests/test_api_integration.py -v
 ```
 
-## Architecture
-
-- **Domain-Driven Design**: Clear separation of concerns
-- **Service Layer**: Business logic separated from API endpoints
-- **Repository Pattern**: Data access abstraction
-- **Custom Indexing**: Three algorithms implemented from scratch
-- **Thread-Safe**: Concurrent request handling with proper locking
 
 
 
